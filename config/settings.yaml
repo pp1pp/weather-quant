@@ -1,0 +1,86 @@
+data_sources:
+  fallback: wu
+  fetch_interval_hours: 3
+  primary: open-meteo
+  retry_count: 3
+  retry_delays:
+  - 5
+  - 15
+  - 30
+model_weights:
+  gfs: 0.21
+  icon: 0.79
+multi_outcome:
+  adaptive_weights: true
+  bias_correction:
+    chicago: 0.0
+    new_york: 0.0
+    shanghai: 1.12
+  bucket_uncertainty_std: 0.5
+  conditional_bias:
+    high_cloud_adj: 0.0
+    high_pressure_adj: 0.0
+    low_humidity_adj: 0.0
+    precipitation_adj: 0.0
+    sea_breeze_adj: 0.0
+  data_source_bias_std: 0.3
+  kelly_cap: 0.25
+  limit_order:
+    bid_aggressiveness: 0.6
+    min_fill_prob: 0.3
+    spread_markup: 0.01
+  max_concurrent_buckets: 4
+  max_hours_to_settle: 36
+  max_observation_weight: 0.7
+  min_bucket_edge: 0.05
+  min_hours_to_settle: 2
+  min_prob_threshold: 0.01
+  observation_blend_start_hours: 6
+  per_bucket_max_amount: 25
+  prob_clamp_max: 0.998
+  prob_clamp_min: 0.002
+  strong_bucket_edge: 0.1
+  student_t_df: 30
+  sum_to_one_threshold: 0.03
+  sweet_spot_hours_high: 18
+  sweet_spot_hours_low: 6
+  total_multi_max_exposure: 80
+position:
+  limits:
+    same_city_same_day_max_pct: 0.25
+    single_market_max_pct: 0.15
+    total_weather_exposure_pct: 0.5
+  sizing:
+  - edge_max: 0.12
+    edge_min: 0.08
+    max_amount: 10
+    pct_of_capital: 0.05
+  - edge_max: 0.18
+    edge_min: 0.12
+    max_amount: 20
+    pct_of_capital: 0.08
+  - edge_max: 1.0
+    edge_min: 0.18
+    max_amount: 30
+    pct_of_capital: 0.12
+  total_capital: 200
+probability:
+  max_observation_weight: 0.6
+  observation_influence_start_hours: 6
+  prob_clamp_max: 0.98
+  prob_clamp_min: 0.02
+  uncertainty_std: 1.5
+risk:
+  liquidity_stop_spread: 0.08
+  model_reversal_threshold: 0.1
+  near_settlement_reduce_hours: 3
+  near_settlement_reduce_pct: 0.5
+  price_deviation_stop: 0.1
+  time_stop_hours: 2
+trading:
+  entry_threshold: 0.08
+  max_spread: 0.05
+  min_hours_to_settle: 2
+  min_liquidity_volume: 100
+  strong_signal_threshold: 0.15
+  update_pause_hours: 1

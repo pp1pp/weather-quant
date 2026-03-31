@@ -1,0 +1,102 @@
+# Multi-city configuration for Polymarket weather temperature markets.
+# Each city has its own WU station, coordinates, timezone, and settlement unit.
+# All markets resolve via Weather Underground historical daily max temperature.
+
+cities:
+  shanghai:
+    name: Shanghai
+    slug_city: shanghai
+    station: Shanghai Pudong International Airport
+    icao: ZSPD
+    wmo: "58362"
+    wu_geocode: "31.14,121.81"
+    country: cn
+    coordinates: [31.1434, 121.8052]
+    timezone: Asia/Shanghai
+    peak_temp_hour: 15.0
+    unit: celsius
+    resolution_url: https://www.wunderground.com/history/daily/cn/shanghai/ZSPD
+    # Open-Meteo model availability: ECMWF not available for Shanghai
+    models: "best_match,gfs_seamless,icon_seamless"
+    # Sea breeze: east wind (45-135°) = coastal cooling
+    sea_breeze_dir: [45, 135]
+
+  chicago:
+    name: Chicago
+    slug_city: chicago
+    station: Chicago O'Hare Intl Airport
+    icao: KORD
+    wmo: "72530"
+    wu_geocode: "41.98,-87.90"
+    country: us
+    coordinates: [41.9742, -87.9073]
+    timezone: America/Chicago
+    peak_temp_hour: 15.0
+    unit: fahrenheit
+    resolution_url: https://www.wunderground.com/history/daily/us/il/chicago/KORD
+    models: "best_match,gfs_seamless,icon_seamless,ecmwf_ifs04"
+    sea_breeze_dir: [0, 90]  # Lake Michigan NE wind
+
+  miami:
+    name: Miami
+    slug_city: miami
+    station: Miami Intl Airport
+    icao: KMIA
+    wmo: "72202"
+    wu_geocode: "25.79,-80.29"
+    country: us
+    coordinates: [25.7959, -80.2870]
+    timezone: America/New_York
+    peak_temp_hour: 15.0
+    unit: fahrenheit
+    resolution_url: https://www.wunderground.com/history/daily/us/fl/miami/KMIA
+    models: "best_match,gfs_seamless,icon_seamless,ecmwf_ifs04"
+    sea_breeze_dir: [45, 180]  # Atlantic east/SE wind
+
+  los_angeles:
+    name: Los Angeles
+    slug_city: los-angeles
+    station: Los Angeles International Airport
+    icao: KLAX
+    wmo: "72295"
+    wu_geocode: "33.94,-118.41"
+    country: us
+    coordinates: [33.9425, -118.4081]
+    timezone: America/Los_Angeles
+    peak_temp_hour: 15.0
+    unit: fahrenheit
+    resolution_url: https://www.wunderground.com/history/daily/us/ca/los-angeles/KLAX
+    models: "best_match,gfs_seamless,icon_seamless,ecmwf_ifs04"
+    sea_breeze_dir: [180, 315]  # Pacific SW-W-NW wind
+
+  london:
+    name: London
+    slug_city: london
+    station: London City Airport
+    icao: EGLC
+    wmo: "03772"
+    wu_geocode: "51.51,-0.05"
+    country: gb
+    coordinates: [51.5054, -0.0553]
+    timezone: Europe/London
+    peak_temp_hour: 15.0
+    unit: celsius
+    resolution_url: https://www.wunderground.com/history/daily/gb/london/EGLC
+    models: "best_match,gfs_seamless,icon_seamless,ecmwf_ifs04"
+    sea_breeze_dir: [45, 135]  # North Sea east wind
+
+  tokyo:
+    name: Tokyo
+    slug_city: tokyo
+    station: Tokyo Haneda Airport
+    icao: RJTT
+    wmo: "47671"
+    wu_geocode: "35.55,139.78"
+    country: jp
+    coordinates: [35.5494, 139.7798]
+    timezone: Asia/Tokyo
+    peak_temp_hour: 14.5
+    unit: celsius
+    resolution_url: https://www.wunderground.com/history/daily/jp/tokyo/RJTT
+    models: "best_match,gfs_seamless,icon_seamless"
+    sea_breeze_dir: [90, 225]  # Tokyo Bay south-east wind
