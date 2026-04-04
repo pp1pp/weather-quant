@@ -8,21 +8,21 @@ data_sources:
   - 15
   - 30
 model_weights:
-  gfs: 0.21
-  icon: 0.79
+  gfs: 0.491
+  icon: 0.509
 multi_outcome:
   adaptive_weights: true
   bias_correction:
     chicago: 0.0
     new_york: 0.0
-    shanghai: 1.12
-  bucket_uncertainty_std: 0.5
+    shanghai: 1.67
+  bucket_uncertainty_std: 1.3
   conditional_bias:
-    high_cloud_adj: 0.0
-    high_pressure_adj: 0.0
-    low_humidity_adj: 0.0
-    precipitation_adj: 0.0
-    sea_breeze_adj: 0.0
+    high_cloud_adj: -0.8
+    high_pressure_adj: 0.3
+    low_humidity_adj: 0.2
+    precipitation_adj: -0.5
+    sea_breeze_adj: -0.3
   data_source_bias_std: 0.3
   kelly_cap: 0.25
   limit_order:
@@ -35,7 +35,7 @@ multi_outcome:
   min_bucket_edge: 0.05
   min_hours_to_settle: 2
   min_prob_threshold: 0.01
-  observation_blend_start_hours: 6
+  observation_blend_start_hours: 10
   per_bucket_max_amount: 25
   prob_clamp_max: 0.998
   prob_clamp_min: 0.002

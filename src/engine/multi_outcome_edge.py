@@ -58,15 +58,32 @@ class MultiOutcomeEdgeDetector:
         snapshot: MultiMarketSnapshot,
     ) -> MultiOutcomeEdgeResult:
         """Compare fair probabilities with market prices and produce edge signals
-        with limit order prices."""
+        with limit order prices.
+
+        Uses Bayesian fusion: blends model probability with market price.
+        Market price contains collective trader information — when the model
+        has low confidence, defer more to the market; when confident, hold.
+
+        α = model_weight:
+          - confidence ≥ 0.9 → α = 0.75 (strongly trust model)
+          - confidence ≈ 0.5 → α = 0.50 (equal blend)
+          - confidence ≤ 0.3 → α = 0.35 (defer to market)
+        """
         bucket_edges = []
         best_buys = []
         best_sells = []
 
+        # Bayesian fusion weight: based on model confidence
+        conf = fair_result.confidence
+        alpha = max(0.35, min(0.75, 0.35 + 0.4 * conf))
+
         for bp in snapshot.buckets:
             label = bp.label
-            fair_prob = fair_result.bucket_probs.get(label, 0.0)
+            raw_model_prob = fair_result.bucket_probs.get(label, 0.0)
             market_price = bp.yes_price
+
+            # Fuse model probability with market price
+            fair_prob = alpha * raw_model_prob + (1 - alpha) * market_price
 
             edge = fair_prob - market_price
 

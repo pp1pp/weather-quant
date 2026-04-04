@@ -154,6 +154,7 @@ def init_system():
     executor = Executor(config, db, dry_run=dry_run, clob_client=clob_client)
     reviewer = SettlementReview(db)
     series_tracker = SeriesTracker()
+    bias_calibrator = BiasCalibrator()
 
     return {
         "db": db,
@@ -172,6 +173,7 @@ def init_system():
         "executor": executor,
         "reviewer": reviewer,
         "series_tracker": series_tracker,
+        "bias_calibrator": bias_calibrator,
         "clob_client": clob_client,
     }
 
@@ -736,6 +738,21 @@ def _auto_optimize_parameters(modules):
             f"per-model bias={model_bias}, "
             f"from {total_cal_rows} settlements across {len(city_registry.all_city_keys())} cities"
         )
+
+        # Per-city auto-tuning: exponential-decay-weighted bias + σ
+        calibrator = modules.get("bias_calibrator")
+        if calibrator:
+            for city in city_registry.all_city_keys():
+                try:
+                    tune_result = calibrator.auto_tune_params(city)
+                    if tune_result and tune_result["applied"]:
+                        logger.info(
+                            f"  [{city}] auto_tune applied: "
+                            f"bias {tune_result['current_bias']:+.2f} → {tune_result['suggested_bias']:+.2f}, "
+                            f"σ {tune_result['current_std']:.2f} → {tune_result['suggested_std']:.2f}"
+                        )
+                except Exception as e:
+                    logger.warning(f"  [{city}] auto_tune failed: {e}")
 
     except Exception as e:
         logger.warning(f"Auto-optimization failed: {e}")

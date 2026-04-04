@@ -123,11 +123,25 @@ class OpenMeteoFetcher:
             "models": "gfs_seamless,icon_seamless",
         }
 
+        data = None
+        for attempt in range(3):
+            try:
+                with httpx.Client(timeout=60) as client:
+                    resp = client.get(self.ENSEMBLE_URL, params=params)
+                    resp.raise_for_status()
+                    data = resp.json()
+                break
+            except Exception as e:
+                if attempt < 2:
+                    import time as _time
+                    delay = [5, 15][attempt]
+                    logger.warning(f"Ensemble fetch attempt {attempt+1} failed: {e}, retrying in {delay}s")
+                    _time.sleep(delay)
+                else:
+                    logger.warning(f"Ensemble fetch failed after 3 attempts: {e}")
+                    return []
+
         try:
-            with httpx.Client(timeout=60) as client:
-                resp = client.get(self.ENSEMBLE_URL, params=params)
-                resp.raise_for_status()
-                data = resp.json()
 
             hourly = data.get("hourly", {})
             times = hourly.get("time", [])

@@ -45,17 +45,30 @@ def get_forecast(request: Request):
     model_forecasts = {k: round(v, 1) for k, v in forecast.model_forecasts.items()}
     fetched_at = bundle.get("fetched_at") or datetime.now(timezone.utc).isoformat()
 
-    # Compute weighted mean + bias
-    weights = config.get("model_weights", {"ecmwf": 0.45, "gfs": 0.30, "icon": 0.25})
-    total_w = sum(weights.get(m, 0) for m in model_forecasts if model_forecasts[m] is not None)
-    weighted_mean = (
-        sum(weights.get(m, 0) * t for m, t in model_forecasts.items() if t is not None) / total_w
-        if total_w > 0
-        else sum(v for v in model_forecasts.values() if v is not None) / len(model_forecasts)
-    )
-
+    # Compute weighted mean with per-model debiasing (matches probability engine)
     city = get_selected_city(request)
-    bias = config.get("multi_outcome", {}).get("bias_correction", {}).get(city, 0.0)
+    prob_engine = request.app.state.modules.get("multi_outcome_prob")
+    if prob_engine:
+        # Use the engine's debiased weighted mean for consistency
+        weighted_mean = prob_engine._weighted_mean(
+            {m: t for m, t in model_forecasts.items() if t is not None},
+            city=city,
+        )
+        # Per-model bias is already applied; show residual city bias if no per-model
+        city_per_model = prob_engine._per_model_bias.get(city, {})
+        if city_per_model:
+            bias = 0.0  # Already handled by per-model debiasing
+        else:
+            bias = config.get("multi_outcome", {}).get("bias_correction", {}).get(city, 0.0)
+    else:
+        weights = config.get("model_weights", {"gfs": 0.50, "icon": 0.50})
+        total_w = sum(weights.get(m, 0) for m in model_forecasts if model_forecasts[m] is not None)
+        weighted_mean = (
+            sum(weights.get(m, 0) * t for m, t in model_forecasts.items() if t is not None) / total_w
+            if total_w > 0
+            else sum(v for v in model_forecasts.values() if v is not None) / len(model_forecasts)
+        )
+        bias = config.get("multi_outcome", {}).get("bias_correction", {}).get(city, 0.0)
     hours_to_settlement = max(0, (settle_utc - datetime.now(timezone.utc)).total_seconds() / 3600)
 
     result = {

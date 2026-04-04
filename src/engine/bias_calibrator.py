@@ -8,8 +8,13 @@ and updates the bias correction in settings.yaml.
 The bias = mean(actual - raw_weighted_forecast) over the last N days.
 We keep sample provenance in SQLite so seed assumptions never contaminate
 live bias updates.
+
+Enhanced with auto_tune_params: learns optimal bias and σ from backtest data
+using exponential-decay weighting (recent data weighted more heavily).
 """
 
+import math
+import statistics
 from datetime import date, datetime, timezone
 
 import yaml
@@ -222,6 +227,119 @@ class BiasCalibrator:
             f"(residual std={result['std']:.2f}, n={result['n']})"
         )
         return True
+
+    def auto_tune_params(self, city: str, min_samples: int = 5) -> dict | None:
+        """Learn optimal bias and σ from backtest data using exponential decay weighting.
+
+        Recent settlements are weighted more heavily (decay=0.9^days_ago),
+        so the model adapts quickly to changing seasonal patterns.
+
+        Returns dict with:
+          - suggested_bias: exponential-decay-weighted mean residual
+          - suggested_std: stdev of debiased residuals → optimal bucket_uncertainty_std
+          - current_bias: current bias_correction value
+          - current_std: current bucket_uncertainty_std
+          - n_samples: number of reference samples used
+          - mean_abs_error: MAE of raw residuals
+          - applied: whether changes were written to config
+        """
+        conn = get_connection()
+        try:
+            rows = conn.execute(
+                """SELECT settle_date, wu_temp, forecast_mean, residual
+                   FROM bias_calibration
+                   WHERE city = ? AND is_reference = 1
+                   ORDER BY settle_date DESC
+                   LIMIT ?""",
+                (city, self.window),
+            ).fetchall()
+        finally:
+            conn.close()
+
+        if len(rows) < min_samples:
+            logger.info(
+                f"auto_tune_params({city}): insufficient samples ({len(rows)} < {min_samples})"
+            )
+            return None
+
+        # Parse dates and compute days_ago for decay weighting
+        today = date.today()
+        residuals = []
+        weights = []
+        decay = 0.9
+
+        for row in rows:
+            settle = date.fromisoformat(row["settle_date"])
+            days_ago = (today - settle).days
+            w = decay ** max(0, days_ago)
+            residuals.append(row["residual"])
+            weights.append(w)
+
+        # Exponential-decay-weighted bias
+        total_w = sum(weights)
+        weighted_bias = sum(r * w for r, w in zip(residuals, weights)) / total_w
+
+        # Cap bias at ±2°C
+        MAX_BIAS = 2.0
+        weighted_bias = max(-MAX_BIAS, min(MAX_BIAS, weighted_bias))
+
+        # Debiased residuals → optimal σ (stdev of what's left after bias correction)
+        debiased = [r - weighted_bias for r in residuals]
+        if len(debiased) >= 2:
+            optimal_std = statistics.stdev(debiased)
+        else:
+            optimal_std = 1.5
+
+        # Floor/cap σ to reasonable range
+        optimal_std = max(0.5, min(2.0, optimal_std))
+
+        # Read current config values
+        with open(self.config_path, "r") as f:
+            cfg = yaml.safe_load(f)
+        mo_cfg = cfg.get("multi_outcome", {})
+        current_bias = mo_cfg.get("bias_correction", {}).get(city, 0.0)
+        current_std = mo_cfg.get("bucket_uncertainty_std", 1.5)
+
+        mae = statistics.mean(abs(r) for r in residuals)
+
+        logger.info(
+            f"auto_tune_params({city}): n={len(rows)}, "
+            f"bias: {current_bias:+.2f} → {weighted_bias:+.2f}, "
+            f"σ: {current_std:.2f} → {optimal_std:.2f}, "
+            f"MAE={mae:.2f}°C"
+        )
+
+        # Apply to config if changes are significant
+        applied = False
+        bias_changed = abs(current_bias - weighted_bias) >= 0.05
+        std_changed = abs(current_std - optimal_std) >= 0.05
+
+        if bias_changed or std_changed:
+            bc = mo_cfg.setdefault("bias_correction", {})
+            if bias_changed:
+                bc[city] = round(weighted_bias, 2)
+            if std_changed:
+                mo_cfg["bucket_uncertainty_std"] = round(optimal_std, 2)
+
+            with open(self.config_path, "w") as f:
+                yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+            applied = True
+
+            logger.info(
+                f"auto_tune_params({city}): APPLIED — "
+                f"bias={'updated' if bias_changed else 'unchanged'}, "
+                f"σ={'updated' if std_changed else 'unchanged'}"
+            )
+
+        return {
+            "suggested_bias": round(weighted_bias, 2),
+            "suggested_std": round(optimal_std, 2),
+            "current_bias": current_bias,
+            "current_std": current_std,
+            "n_samples": len(rows),
+            "mean_abs_error": round(mae, 2),
+            "applied": applied,
+        }
 
 
 def _table_exists(conn, table_name: str) -> bool:
