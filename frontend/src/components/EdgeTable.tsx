@@ -43,70 +43,72 @@ export default function EdgeTable({ edges, signals, scenarioPnl, sumToOneGap }: 
         )}
       </div>
 
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>温度</th>
-            <th>方向</th>
-            <th style={{ textAlign: 'right' }}>Edge</th>
-            <th>挂单</th>
-            <th>盈亏比</th>
-            <th>下注</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map(e => {
-            const absEdge = Math.abs(e.edge)
-            const barWidth = Math.min(100, (absEdge / maxAbsEdge) * 100)
-            const isActionable = e.strength !== 'NONE'
-            const signal = signalMap.get(e.label)
+      <div className="data-table-wrap">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>温度</th>
+              <th>方向</th>
+              <th style={{ textAlign: 'right' }}>Edge</th>
+              <th>挂单</th>
+              <th>盈亏比</th>
+              <th>下注</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map(e => {
+              const absEdge = Math.abs(e.edge)
+              const barWidth = Math.min(100, (absEdge / maxAbsEdge) * 100)
+              const isActionable = e.strength !== 'NONE'
+              const signal = signalMap.get(e.label)
 
-            return (
-              <tr key={e.label} style={{ opacity: isActionable ? 1 : 0.45 }}>
-                <td style={{ fontWeight: 600, fontSize: 12 }}>{e.label}</td>
-                <td>
-                  {isActionable ? (
-                    <span className={`badge ${e.direction === 'BUY_YES' ? 'badge-buy-yes' : 'badge-buy-no'}`}>
-                      {e.direction === 'BUY_YES' ? 'YES' : 'NO'}
-                    </span>
-                  ) : (
-                    <span style={{ color: '#94a3b8', fontSize: 11 }}>--</span>
-                  )}
-                </td>
-                <td style={{ textAlign: 'right' }}>
-                  <div className="edge-bar-wrap" style={{ justifyContent: 'flex-end' }}>
-                    <span className={absEdge >= 0.05 ? (e.edge > 0 ? 'value-positive' : 'value-negative') : ''}
-                          style={{ fontSize: 12, fontWeight: absEdge >= 0.10 ? 700 : 400 }}>
-                      {e.edge > 0 ? '+' : ''}{(e.edge * 100).toFixed(1)}%
-                    </span>
-                    <div className={`edge-bar ${e.edge > 0 ? 'edge-bar-pos' : 'edge-bar-neg'}`}
-                         style={{ width: `${barWidth}%`, maxWidth: 40 }} />
-                  </div>
-                </td>
-                <td style={{ fontSize: 11, color: '#475569', fontFamily: 'monospace' }}>
-                  {isActionable && e.limit_price > 0 ? (
-                    <span title={`成交概率: ${(e.fill_prob * 100).toFixed(0)}%`}>
-                      ¢{(e.limit_price * 100).toFixed(1)}
-                    </span>
-                  ) : '--'}
-                </td>
-                <td style={{ fontSize: 11, fontFamily: 'monospace' }}>
-                  {isActionable && e.risk_reward > 0 ? (
-                    <span style={{ color: e.risk_reward >= 3 ? '#16a34a' : e.risk_reward >= 1.5 ? '#ca8a04' : '#64748b' }}>
-                      {e.risk_reward.toFixed(1)}:1
-                    </span>
-                  ) : '--'}
-                </td>
-                <td style={{ fontSize: 11, fontWeight: 600 }}>
-                  {signal ? (
-                    <span style={{ color: '#2563eb' }}>${signal.amount.toFixed(0)}</span>
-                  ) : '--'}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+              return (
+                <tr key={e.label} style={{ opacity: isActionable ? 1 : 0.45 }}>
+                  <td style={{ fontWeight: 600, fontSize: 12 }}>{e.label}</td>
+                  <td>
+                    {isActionable ? (
+                      <span className={`badge ${e.direction === 'BUY_YES' ? 'badge-buy-yes' : 'badge-buy-no'}`}>
+                        {e.direction === 'BUY_YES' ? 'YES' : 'NO'}
+                      </span>
+                    ) : (
+                      <span style={{ color: '#94a3b8', fontSize: 11 }}>--</span>
+                    )}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <div className="edge-bar-wrap" style={{ justifyContent: 'flex-end' }}>
+                      <span className={absEdge >= 0.05 ? (e.edge > 0 ? 'value-positive' : 'value-negative') : ''}
+                            style={{ fontSize: 12, fontWeight: absEdge >= 0.10 ? 700 : 400 }}>
+                        {e.edge > 0 ? '+' : ''}{(e.edge * 100).toFixed(1)}%
+                      </span>
+                      <div className={`edge-bar ${e.edge > 0 ? 'edge-bar-pos' : 'edge-bar-neg'}`}
+                           style={{ width: `${barWidth}%`, maxWidth: 40 }} />
+                    </div>
+                  </td>
+                  <td style={{ fontSize: 11, color: '#475569', fontFamily: 'monospace' }}>
+                    {isActionable && e.limit_price > 0 ? (
+                      <span title={`成交概率: ${(e.fill_prob * 100).toFixed(0)}%`}>
+                        ¢{(e.limit_price * 100).toFixed(1)}
+                      </span>
+                    ) : '--'}
+                  </td>
+                  <td style={{ fontSize: 11, fontFamily: 'monospace' }}>
+                    {isActionable && e.risk_reward > 0 ? (
+                      <span style={{ color: e.risk_reward >= 3 ? '#16a34a' : e.risk_reward >= 1.5 ? '#ca8a04' : '#64748b' }}>
+                        {e.risk_reward.toFixed(1)}:1
+                      </span>
+                    ) : '--'}
+                  </td>
+                  <td style={{ fontSize: 11, fontWeight: 600 }}>
+                    {signal ? (
+                      <span style={{ color: '#2563eb' }}>${signal.amount.toFixed(0)}</span>
+                    ) : '--'}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
 
       {/* Scenario P&L */}
       {scenarioPnl && Object.keys(scenarioPnl).length > 0 && signals && signals.length > 0 && (

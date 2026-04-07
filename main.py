@@ -1088,8 +1088,25 @@ def cmd_status(modules):
     print()
 
 
+_scheduler = None  # module-level ref for graceful shutdown
+
+
 def graceful_shutdown(signum, frame):
     logger.info("Shutting down gracefully...")
+    # Checkpoint SQLite WAL before exit
+    try:
+        from src.utils.db import get_connection
+        conn = get_connection()
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        logger.info("SQLite WAL checkpoint completed")
+    except Exception as e:
+        logger.warning(f"WAL checkpoint failed: {e}")
+    # Shutdown scheduler if running
+    if _scheduler is not None:
+        try:
+            _scheduler.shutdown(wait=False)
+        except Exception:
+            pass
     sys.exit(0)
 
 
@@ -1124,11 +1141,11 @@ def main():
         web_thread = threading.Thread(
             target=uvicorn.run,
             args=(app,),
-            kwargs={"host": "0.0.0.0", "port": 8000, "log_level": "warning"},
+            kwargs={"host": "0.0.0.0", "port": int(os.getenv("PORT", "8000")), "log_level": "warning"},
             daemon=True,
         )
         web_thread.start()
-        logger.info("Web dashboard started at http://localhost:8000")
+        logger.info(f"Web dashboard started at http://localhost:{int(os.getenv('PORT', '8000'))}")
 
     # Auto-discover latest markets for all cities
     discover_markets(modules)
@@ -1143,7 +1160,9 @@ def main():
     # Start scheduler for 24/7 operation
     from apscheduler.schedulers.blocking import BlockingScheduler
 
+    global _scheduler
     scheduler = BlockingScheduler()
+    _scheduler = scheduler
     # Market discovery: every 4 hours (new daily markets appear ~midnight ET)
     scheduler.add_job(lambda: discover_markets(modules), "interval", hours=4, id="discover")
     # Weather fetch: every 1 hour (more frequent for better data collection)

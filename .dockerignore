@@ -1,0 +1,15 @@
+.git
+.claude
+__pycache__
+*.pyc
+.venv
+venv
+frontend/node_modules
+frontend/dist
+data/
+config/.env
+.DS_Store
+*.log
+.running_pids
+.pytest_cache
+.logs/

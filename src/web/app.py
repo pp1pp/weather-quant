@@ -1,12 +1,44 @@
 """FastAPI application factory for the weather-quant dashboard API."""
 
+import base64
+import secrets
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 import os
 
 from src.web.routes import forecast, market, probabilities, positions, stats, bias, timing, dashboard, mode, backtest, calibrate
+
+
+class BasicAuthMiddleware(BaseHTTPMiddleware):
+    """Simple HTTP Basic Auth middleware. Skips /api/health for container healthchecks."""
+
+    def __init__(self, app, password: str):
+        super().__init__(app)
+        self.password = password
+
+    async def dispatch(self, request: Request, call_next):
+        if request.url.path == "/api/health":
+            return await call_next(request)
+
+        auth = request.headers.get("authorization", "")
+        if auth.startswith("Basic "):
+            try:
+                decoded = base64.b64decode(auth[6:]).decode("utf-8")
+                _, pwd = decoded.split(":", 1)
+                if secrets.compare_digest(pwd, self.password):
+                    return await call_next(request)
+            except Exception:
+                pass
+
+        return Response(
+            status_code=401,
+            headers={"WWW-Authenticate": 'Basic realm="Weather Quant Dashboard"'},
+            content="Unauthorized",
+        )
 
 
 def create_app(modules: dict, config: dict) -> FastAPI:
@@ -16,22 +48,34 @@ def create_app(modules: dict, config: dict) -> FastAPI:
         version="1.0.0",
     )
 
+    # Basic Auth — only when DASHBOARD_PASSWORD is set
+    dash_password = os.getenv("DASHBOARD_PASSWORD", "")
+    if dash_password:
+        app.add_middleware(BasicAuthMiddleware, password=dash_password)
+
     # CORS for Vite dev server
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
         allow_methods=["*"],
         allow_headers=["*"],
+        allow_credentials=True,
     )
 
     # Store modules & config on app state for route access
     app.state.modules = modules
     app.state.config = config
 
-    # Health check — register BEFORE routers
+    # Health check — register BEFORE routers, exempt from auth
     @app.get("/api/health")
     def health():
-        return {"status": "ok"}
+        try:
+            db = modules.get("db")
+            if db:
+                db.execute("SELECT 1")
+            return {"status": "ok"}
+        except Exception:
+            return JSONResponse({"status": "unhealthy"}, status_code=503)
 
     # Register API routes
     app.include_router(dashboard.router, prefix="/api")
