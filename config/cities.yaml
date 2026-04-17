@@ -23,6 +23,7 @@ cities:
 
   chicago:
     name: Chicago
+    enabled: false
     slug_city: chicago
     station: Chicago O'Hare Intl Airport
     icao: KORD
@@ -39,6 +40,7 @@ cities:
 
   miami:
     name: Miami
+    enabled: false
     slug_city: miami
     station: Miami Intl Airport
     icao: KMIA
@@ -55,6 +57,7 @@ cities:
 
   los_angeles:
     name: Los Angeles
+    enabled: false
     slug_city: los-angeles
     station: Los Angeles International Airport
     icao: KLAX
@@ -71,6 +74,7 @@ cities:
 
   london:
     name: London
+    enabled: false
     slug_city: london
     station: London City Airport
     icao: EGLC
@@ -87,6 +91,7 @@ cities:
 
   tokyo:
     name: Tokyo
+    enabled: false
     slug_city: tokyo
     station: Tokyo Haneda Airport
     icao: RJTT

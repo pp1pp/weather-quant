@@ -573,7 +573,7 @@ class MultiOutcomeProbEngine:
             cal_rows = conn.execute(
                 """SELECT settle_date, wu_temp FROM bias_calibration
                    WHERE city = ? AND is_reference = 1
-                   ORDER BY settle_date DESC LIMIT 14""",
+                   ORDER BY settle_date DESC LIMIT 20""",
                 (city,),
             ).fetchall()
 
@@ -583,9 +583,21 @@ class MultiOutcomeProbEngine:
                 """SELECT event_date, model_name, hourly_temps
                    FROM raw_forecasts
                    WHERE city = ?
+                     AND fetched_at < (event_date || 'T12:00:00')
                    ORDER BY event_date DESC, fetched_at DESC""",
                 (city,),
             ).fetchall()
+            # Fallback: if too few forecasts found, use all forecasts
+            if len(rows) < 5:
+                conn2 = get_connection()
+                rows = conn2.execute(
+                    """SELECT event_date, model_name, hourly_temps
+                       FROM raw_forecasts
+                       WHERE city = ?
+                       ORDER BY event_date DESC, fetched_at DESC""",
+                    (city,),
+                ).fetchall()
+                conn2.close()
             conn.close()
 
             model_maxes: dict[str, dict[str, float]] = {}
@@ -621,7 +633,7 @@ class MultiOutcomeProbEngine:
         """
         import time as _time
         city_cache_time = self._per_model_bias_time.get(city, 0)
-        if _time.time() - city_cache_time < 3600 and city in self._per_model_bias:
+        if _time.time() - city_cache_time < 1800 and city in self._per_model_bias:
             return
 
         try:

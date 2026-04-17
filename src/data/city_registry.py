@@ -85,8 +85,9 @@ def reload(config_path: str | None = None):
 
 
 def all_city_keys() -> list[str]:
-    """Return all registered city keys."""
-    return list(_ensure_loaded().keys())
+    """Return enabled city keys (enabled: true by default)."""
+    cities = _ensure_loaded()
+    return [k for k, v in cities.items() if v.get("enabled", True)]
 
 
 def get_city(key: str) -> dict | None:
