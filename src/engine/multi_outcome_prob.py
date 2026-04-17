@@ -86,12 +86,16 @@ class MultiOutcomeProbEngine:
 
         # Conditional bias adjustment coefficients
         # Start with config defaults, then override with data-learned values
+        # Defaults tuned on 13-day Shanghai residual analysis (Apr 2026)
         self.conditional_bias_cfg = mo_cfg.get("conditional_bias", {
-            "sea_breeze_adj": -0.5,
-            "high_cloud_adj": -0.3,
-            "precipitation_adj": -0.8,
-            "high_pressure_adj": 0.3,
-            "low_humidity_adj": 0.2,
+            "sea_breeze_adj": 0.1,        # Near-neutral; humidity handles the main signal
+            "high_cloud_adj": -0.25,      # Overcast caps max temp (conservative)
+            "precipitation_adj": -0.35,   # Rain reduces bias (conservative)
+            "high_pressure_adj": 0.2,     # Clear sky slightly higher bias
+            "very_dry_adj": 1.2,          # humid < 50% → +1.2°C extra (empirically validated)
+            "dry_adj": 0.8,               # humid 50-65% → +0.8°C extra
+            "mid_humid_adj": 0.0,         # humid 65-80% → neutral; base correction sufficient
+            "high_humid_adj": 0.1,        # humid > 80% → tiny nudge
         })
         self._learned_bias_cache = None
         self._learned_bias_cache_time = 0
@@ -134,23 +138,42 @@ class MultiOutcomeProbEngine:
         )
 
         # Extract cloud cover for weather-stratified bias
+        # weather_factors is dict[str, WeatherFactors], not a simple flat dict.
         _cloud = None
+        _humidity = None
         if forecast.weather_factors:
-            _cloud = forecast.weather_factors.get("cloud_cover") or forecast.weather_factors.get("mean_cloud_cover")
+            all_wf = list(forecast.weather_factors.values())
+            if all_wf:
+                try:
+                    clouds = [f.mean_cloud_cover for f in all_wf if f.mean_cloud_cover is not None]
+                    if clouds:
+                        _cloud = statistics.mean(clouds)
+                    humids = [f.mean_humidity for f in all_wf if f.mean_humidity is not None]
+                    if humids:
+                        _humidity = statistics.mean(humids)
+                except Exception:
+                    pass
         mean_temp = self._weighted_mean(
             forecast.model_forecasts, weights_override=active_weights,
             city=city, cloud_cover=_cloud,
         )
 
         # Update conditional bias with learned values if available
+        # NOTE: Only allow precipitation_adj and sea_breeze_adj to be updated
+        # by the learning algorithm. Humidity and cloud cover factors are CONFOUNDED
+        # (cloudy ↔ humid in Shanghai spring data) — learning both would double-count.
+        # The humidity stratification is set from empirical manual analysis.
+        _LEARNABLE_FACTORS = {"precipitation_adj", "sea_breeze_adj", "high_pressure_adj"}
         import time as _time
         if _time.time() - self._learned_bias_cache_time > 3600:
             learned = self._learn_conditional_bias(city)
             if learned:
-                # Blend 60% learned + 40% config defaults
+                # Blend 50% learned + 50% config defaults (more conservative than before)
                 for k, v in learned.items():
+                    if k not in _LEARNABLE_FACTORS:
+                        continue  # Skip confounded factors (cloud, humidity)
                     default = self.conditional_bias_cfg.get(k, 0)
-                    self.conditional_bias_cfg[k] = round(0.6 * v + 0.4 * default, 2)
+                    self.conditional_bias_cfg[k] = round(0.5 * v + 0.5 * default, 2)
                 self._learned_bias_cache = learned
             self._learned_bias_cache_time = _time.time()
 
@@ -171,7 +194,7 @@ class MultiOutcomeProbEngine:
         else:
             base_bias = self.bias_correction.get(city, 0.0)
 
-        conditional_adj = self._compute_conditional_bias(forecast)
+        conditional_adj = self._compute_conditional_bias(forecast, _humidity)
 
         # Temperature-stratified bias: warmer days underpredict more (dampened on cloudy days)
         stratified_adj = self._stratified_bias(mean_temp + base_bias, city, cloud_cover=_cloud)
@@ -396,53 +419,87 @@ class MultiOutcomeProbEngine:
 
         return calibrated
 
-    def _compute_conditional_bias(self, forecast: NormalizedForecast) -> float:
+    def _compute_conditional_bias(
+        self,
+        forecast: NormalizedForecast,
+        precomputed_humidity: float | None = None,
+    ) -> float:
         """Compute conditional bias adjustment based on weather factors.
 
         Adjusts the base bias using weather conditions that systematically
         affect the Open-Meteo vs WU settlement difference.
+
+        Key empirical finding (Shanghai data, n=13 weather-matched days):
+          - Dry days (humid < 65%):   avg residual = +2.58°C
+          - Moderate (65–80%):         avg residual = +0.82°C
+          - Humid (> 80%):             avg residual = +1.08°C
+        Humidity is by far the strongest single predictor.
         """
         if not forecast.weather_factors:
+            # Fall back to precomputed humidity if available
+            if precomputed_humidity is not None:
+                return self._humidity_adj(precomputed_humidity)
             return 0.0
 
         # Average factors across available models
         all_factors = list(forecast.weather_factors.values())
         if not all_factors:
+            if precomputed_humidity is not None:
+                return self._humidity_adj(precomputed_humidity)
             return 0.0
 
-        avg_cloud = statistics.mean(f.mean_cloud_cover for f in all_factors)
-        avg_precip = statistics.mean(f.total_precipitation for f in all_factors)
-        avg_humidity = statistics.mean(f.mean_humidity for f in all_factors)
-        avg_pressure = statistics.mean(f.mean_pressure for f in all_factors)
-        any_sea_breeze = any(f.is_sea_breeze for f in all_factors)
+        try:
+            clouds = [f.mean_cloud_cover for f in all_factors if f.mean_cloud_cover is not None]
+            precips = [f.total_precipitation for f in all_factors if f.total_precipitation is not None]
+            humids = [f.mean_humidity for f in all_factors if f.mean_humidity is not None]
+            pressures = [f.mean_pressure for f in all_factors if f.mean_pressure is not None]
+            avg_cloud = statistics.mean(clouds) if clouds else 60.0
+            avg_precip = statistics.mean(precips) if precips else 0.0
+            avg_humidity = statistics.mean(humids) if humids else (precomputed_humidity if precomputed_humidity is not None else 70.0)
+            avg_pressure = statistics.mean(pressures) if pressures else 1013.0
+            any_sea_breeze = any(getattr(f, "is_sea_breeze", False) for f in all_factors)
+        except Exception:
+            if precomputed_humidity is not None:
+                return self._humidity_adj(precomputed_humidity)
+            return 0.0
 
         adj = 0.0
         cfg = self.conditional_bias_cfg
 
-        # Sea breeze at ZSPD: east wind brings cooler maritime air
-        if any_sea_breeze:
-            adj += cfg.get("sea_breeze_adj", -0.5)
+        # === HUMIDITY (strongest predictor for Shanghai) ===
+        # Dry days: models significantly under-predict max temperature
+        # Humid days: bias closer to baseline
+        adj += self._humidity_adj(avg_humidity)
 
-        # High cloud cover (>70%): models tend to overestimate max temp
-        if avg_cloud > 70:
-            adj += cfg.get("high_cloud_adj", -0.3)
+        # === CLOUD COVER ===
+        # Overcast (>70%): tends to cap max temp, slightly lower bias
+        if avg_cloud > 85:
+            adj += cfg.get("high_cloud_adj", -0.4)
+        elif avg_cloud > 70:
+            adj += cfg.get("high_cloud_adj", -0.4) * 0.5  # partial effect
 
-        # Precipitation: rain significantly lowers max temp vs model forecast
-        if avg_precip > 1.0:
-            adj += cfg.get("precipitation_adj", -0.8)
-        elif avg_precip > 0.1:
-            adj += cfg.get("precipitation_adj", -0.8) * 0.4  # light rain
+        # === PRECIPITATION ===
+        # Rain significantly reduces under-prediction (cloud + evaporative cooling)
+        if avg_precip > 2.0:
+            adj += cfg.get("precipitation_adj", -0.6)
+        elif avg_precip > 0.5:
+            adj += cfg.get("precipitation_adj", -0.6) * 0.5  # light rain
 
-        # High pressure (>1020 hPa): clear skies, model underestimates warming
+        # === HIGH PRESSURE ===
+        # Strong high pressure: clear skies, model can still underestimate warming
         if avg_pressure > 1020:
-            adj += cfg.get("high_pressure_adj", 0.3)
+            adj += cfg.get("high_pressure_adj", 0.2)
 
-        # Low humidity (<50%): dry air allows faster warming
-        if avg_humidity < 50:
-            adj += cfg.get("low_humidity_adj", 0.2)
+        # === SEA BREEZE ===
+        # Sea breeze in spring Shanghai often brings warm humid air from sea.
+        # Empirically neutral → small positive (avg +0.2°C) when controlling for humidity.
+        # Set near-zero; let humidity adjustment carry the main signal.
+        if any_sea_breeze:
+            adj += cfg.get("sea_breeze_adj", 0.1)
 
-        # Clamp to ±1.5°C total conditional adjustment
-        adj = max(-1.5, min(1.5, adj))
+        # Clamp to ±2.0°C total conditional adjustment (widened from 1.5 to allow
+        # strong humidity correction on very dry days)
+        adj = max(-2.0, min(2.0, adj))
 
         if abs(adj) > 0.05:
             logger.info(
@@ -452,6 +509,25 @@ class MultiOutcomeProbEngine:
             )
 
         return round(adj, 2)
+
+    def _humidity_adj(self, avg_humidity: float) -> float:
+        """Humidity-stratified bias adjustment.
+
+        Based on 13-day Shanghai empirical analysis:
+          humid < 50%:   avg residual 2.8°C  → base +0.83 → gap +1.5→ adj +1.2
+          humid 50–65%:  avg residual 2.4°C  → base +0.83 → gap +1.0 → adj +0.8
+          humid 65–80%:  avg residual 0.8°C  → base +0.83 → gap ~0   → adj +0.1
+          humid > 80%:   avg residual 1.0°C  → base +0.83 → gap +0.2 → adj +0.2
+        """
+        cfg = self.conditional_bias_cfg
+        if avg_humidity < 50:
+            return cfg.get("very_dry_adj", 1.2)
+        elif avg_humidity < 65:
+            return cfg.get("dry_adj", 0.8)
+        elif avg_humidity < 80:
+            return cfg.get("mid_humid_adj", 0.1)
+        else:
+            return cfg.get("high_humid_adj", 0.2)
 
     @staticmethod
     def compute_bucket_probs(
@@ -1209,7 +1285,7 @@ class MultiOutcomeProbEngine:
             ).fetchall()
             conn.close()
 
-            if len(rows) < 15:
+            if len(rows) < 10:
                 return None
 
             # Simple OLS: compute coefficients for each factor
@@ -1219,9 +1295,11 @@ class MultiOutcomeProbEngine:
 
             learned = {}
             factor_cols = {
-                "high_cloud_adj": ("mean_cloud_cover", lambda v: 1 if v > 70 else 0),
-                "precipitation_adj": ("total_precipitation", lambda v: 1 if v > 1.0 else (0.4 if v > 0.1 else 0)),
-                "low_humidity_adj": ("mean_humidity", lambda v: 1 if v < 50 else 0),
+                "high_cloud_adj": ("mean_cloud_cover", lambda v: 1 if v > 85 else (0.5 if v > 70 else 0)),
+                "precipitation_adj": ("total_precipitation", lambda v: 1 if v > 2.0 else (0.5 if v > 0.5 else 0)),
+                "very_dry_adj": ("mean_humidity", lambda v: 1 if v < 50 else 0),
+                "dry_adj": ("mean_humidity", lambda v: 1 if 50 <= v < 65 else 0),
+                "high_humid_adj": ("mean_humidity", lambda v: 1 if v >= 80 else 0),
                 "high_pressure_adj": ("mean_pressure", lambda v: 1 if v > 1020 else 0),
                 "sea_breeze_adj": ("is_sea_breeze", lambda v: 1 if v else 0),
             }

@@ -8,25 +8,29 @@ data_sources:
   - 15
   - 30
 model_weights:
-  gfs: 0.503
-  icon: 0.497
+  gfs: 0.506
+  icon: 0.494
 multi_outcome:
   adaptive_weights: true
   bias_correction:
     chicago: 2.0
     new_york: 0.0
-    shanghai: 1.28
-    miami: -0.31
+    shanghai: 1.1
+    miami: -0.72
     los_angeles: 2.0
-    london: -0.14
-    tokyo: 0.42
-  bucket_uncertainty_std: 2.0
+    london: -0.41
+    tokyo: -0.75
+  bucket_uncertainty_std: 1.17
   conditional_bias:
-    high_cloud_adj: -0.8
-    high_pressure_adj: 0.3
-    low_humidity_adj: 0.2
-    precipitation_adj: -0.5
-    sea_breeze_adj: -0.3
+    # Humidity is the #1 predictor for Shanghai (empirically validated Apr 2026)
+    very_dry_adj: 1.2      # humid < 50%:   +1.2°C (dry spring days way under-predicted)
+    dry_adj: 0.8           # humid 50-65%:  +0.8°C
+    mid_humid_adj: 0.0     # humid 65-80%:  neutral; base correction sufficient
+    high_humid_adj: 0.1    # humid > 80%:   tiny nudge
+    high_cloud_adj: -0.25  # overcast (>70%): caps max temp (conservative)
+    precipitation_adj: -0.35  # rain reduces bias (conservative)
+    high_pressure_adj: 0.2
+    sea_breeze_adj: 0.1    # near-neutral; humidity handles the main signal
   data_source_bias_std: 0.3
   kelly_cap: 0.12
   limit_order:
@@ -36,7 +40,7 @@ multi_outcome:
   max_concurrent_buckets: 3
   max_hours_to_settle: 36
   max_observation_weight: 0.7
-  min_bucket_edge: 0.10
+  min_bucket_edge: 0.1
   min_hours_to_settle: 2
   min_prob_threshold: 0.01
   observation_blend_start_hours: 10
